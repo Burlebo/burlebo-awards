@@ -164,6 +164,15 @@ h2.sec{font-size:22px;font-weight:800;font-style:italic;text-transform:uppercase
   border:1px dashed var(--line-2);border-radius:2px}
 .empty-state b{display:block;font-size:16px;font-style:italic;font-weight:800;color:var(--dim);
   margin-bottom:7px;text-transform:uppercase}
+.entry .meta .del{background:none;border:0;color:var(--faint);font:inherit;font-family:var(--mono);
+    font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;padding:0 0 0 10px}
+  .entry .meta .del:hover{color:#FF6B5A}
+  .entry.confirming{border-left-color:#A8382A}
+  .entry .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:11px;
+    padding-top:11px;border-top:1px solid var(--line)}
+  .entry .confirm span{font-size:12.5px;color:#FF9E8C;flex:1;min-width:150px}
+  .btn.danger{background:#A8382A;color:#fff}
+  .btn.danger:hover{filter:brightness(1.14)}
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--blaze);
   color:#140E06;font-weight:700;font-size:13px;padding:11px 20px;border-radius:2px;z-index:90;
   box-shadow:0 8px 26px rgba(0,0,0,.5)}
@@ -608,16 +617,52 @@ function renderNominee(award, nominee){
     <p class="sub">${es.length} submission${es.length===1?"":"s"} from ${voters} ${voters===1?"person":"people"} for ${esc(award)}</p>
     <div class="tools"><button class="btn ghost sm" id="copy">Copy all as text</button></div>
     ${es.map(e => `
-      <div class="entry">
-        <div class="meta"><span>From <b>${esc(e.nominator)}</b></span><span>${fmtDate(e.created_at)}</span></div>
+      <div class="entry" id="e-${e.id}">
+        <div class="meta"><span>From <b>${esc(e.nominator)}</b></span>
+          <span>${fmtDate(e.created_at)}<button class="del" data-del="${e.id}">Delete</button></span></div>
         <p>${esc(e.comment)}</p>
       </div>`).join("")}`;
   wireCrumbs(parts);
+  document.querySelectorAll("[data-del]").forEach(b =>
+    b.addEventListener("click", () => confirmDelete(b.dataset.del, award, nominee)));
   $("copy").addEventListener("click", () => {
     const txt = `${nominee} \u2014 ${award}\n${es.length} submissions from ${voters} people\n\n` +
       es.map(e => `From ${e.nominator} (${fmtDate(e.created_at)}):\n${e.comment}`).join("\n\n");
     navigator.clipboard.writeText(txt).then(() => toast("Copied to clipboard"),
       () => toast("Could not copy"));
+  });
+}
+
+/* Two-step delete. Nominations are not recoverable, so the confirm
+   lives inline on the card rather than in a browser dialog that is
+   easy to dismiss by reflex. */
+function confirmDelete(id, award, nominee){
+  const card = $("e-" + id);
+  if(!card || card.querySelector(".confirm")) return;
+  card.classList.add("confirming");
+  const box = document.createElement("div");
+  box.className = "confirm";
+  box.innerHTML = `<span>Delete this nomination for good?</span>
+    <button class="btn danger sm" data-yes>Delete</button>
+    <button class="btn ghost sm" data-no>Cancel</button>`;
+  card.appendChild(box);
+  box.querySelector("[data-no]").addEventListener("click", () => {
+    card.classList.remove("confirming"); box.remove();
+  });
+  box.querySelector("[data-yes]").addEventListener("click", async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true; btn.innerHTML = `<span class="spin"></span>`;
+    const { error } = await db.rpc("awards_delete_entry", { pw: ADMIN_PW, p_id: id });
+    if(error){
+      box.querySelector("span").textContent = /authoris|authoriz/i.test(error.message)
+        ? "Session expired \u2014 log out and back in." : error.message;
+      btn.disabled = false; btn.textContent = "Delete"; return;
+    }
+    DATA = DATA.filter(x => x.id !== id);
+    toast("Nomination deleted");
+    // If that was the last one for this nominee, there is nothing left to show.
+    const left = DATA.filter(x => x.award === award && x.nominee === nominee).length;
+    if(left) renderNominee(award, nominee); else renderAward(award);
   });
 }
 
@@ -632,7 +677,8 @@ function renderPeople(msg){
   view.innerHTML = crumbs(parts) + `
     <h2 class="sec">People</h2>
     <p class="sub">${active} on the list${rows.length - active ? `, ${rows.length - active} hidden` : ""}.
-      Anyone added here shows up in both dropdowns on the form straight away.</p>
+      Anyone added here shows up in both dropdowns on the form straight away.
+      Hide keeps someone's nominations intact; Remove only appears for people who have none.</p>
 
     <div class="card" style="margin-bottom:20px">
       <label class="fl" for="newname">Add someone</label>
@@ -651,6 +697,8 @@ function renderPeople(msg){
         <span class="ct">${n ? n + " nomination" + (n===1?"":"s") : "\u2014"}</span>
         ${r.id ? `<button class="btn ghost sm" data-tog="${r.id}" data-act="${r.active?"1":"0"}"
               >${r.active ? "Hide" : "Restore"}</button>` : ""}
+        ${r.id && !n && !DATA.some(e => e.nominator === r.name)
+          ? `<button class="btn ghost sm" data-rm="${r.id}" data-nm="${esc(r.name)}">Remove</button>` : ""}
       </div>`;
     }).join("")}`;
 
@@ -663,6 +711,13 @@ function renderPeople(msg){
       { pw: ADMIN_PW, p_id: b.dataset.tog, p_active: b.dataset.act !== "1" });
     if(error){ toast("Could not update"); b.disabled = false; return; }
     await loadPeople(); renderPeople();
+  }));
+  document.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", async () => {
+    if(!confirm(`Remove ${b.dataset.nm} from the list completely?`)) return;
+    b.disabled = true;
+    const { error } = await db.rpc("awards_delete_person", { pw: ADMIN_PW, p_id: b.dataset.rm });
+    if(error){ toast(error.message.replace(/^.*?:\s*/, "")); b.disabled = false; return; }
+    await loadPeople(); renderPeople(); toast(b.dataset.nm + " removed");
   }));
   $("newname").focus();
 }
