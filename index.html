@@ -540,9 +540,9 @@ function renderBeeForm(){
         <textarea id="bee-why" placeholder="What did they do this week? A big win, a small kindness, anything."></textarea>
       </div>
       <div class="fieldwrap">
-        <label class="fl" for="bee-gift">If they win, where is the gift card of their choice?</label>
+        <label class="fl" for="bee-gift">If you win, where do you want your gift card from? (required)</label>
         <input type="text" id="bee-gift" maxlength="80" placeholder="Any store or restaurant">
-        <p class="help">One winner each week gets a gift card.</p>
+        <p class="help">This is for you, not the person you are voting for. We keep your answer on file in case you win.</p>
       </div>
       <button class="btn wide" id="bee-submit">Cast my vote</button>
       <div id="beeerr"></div>
@@ -570,7 +570,7 @@ async function submitBee(){
   if(!nominator) problems.push("pick your name from the list");
   if(!nominee)   problems.push("pick who you are voting for");
   if(comment.length < 10) problems.push("write a bit about why");
-  if(gift_card.length < 2) problems.push("say where the gift card should be from");
+  if(gift_card.length < 2) problems.push("tell us where you want your gift card from if you win");
   if(problems.length){
     err.innerHTML = `<div class="err">Almost there \u2014 please ${problems.join(", ")}.</div>`;
     return;
@@ -793,7 +793,7 @@ function entryCard(e){
       <div class="meta"><span>From <b>${esc(e.nominator)}</b></span>
         <span>${fmtDate(e.created_at)}<button class="del" data-del="${e.id}">Delete</button></span></div>
       <p>${esc(e.comment)}</p>
-      ${e.award === BEE ? `<div class="gift">Gift card if they win: <b>${esc(e.gift_card || "\u2014")}</b></div>` : ""}
+      ${e.award === BEE ? `<div class="gift">Voter\u2019s own gift card pick: <b>${esc(e.gift_card || "\u2014")}</b></div>` : ""}
     </div>`;
 }
 function copyText(txt){
@@ -821,6 +821,15 @@ function beeWeeks(){
   const keys = Object.keys(weeks).sort((a,b) =>
     a === NO_WEEK ? 1 : b === NO_WEEK ? -1 : b.localeCompare(a));
   return { weeks, keys };
+}
+
+/* A person's gift card answer comes from votes THEY cast.
+   Prefer their vote from the same week, else their most recent one. */
+function ownPick(name, k){
+  const mine = DATA.filter(e => e.award === BEE && e.nominator === name && e.gift_card)
+                   .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const same = mine.find(e => weekKey(e) === k);
+  return (same || mine[0] || {}).gift_card || "";
 }
 
 /* ---- list of weeks ---- */
@@ -859,7 +868,16 @@ function renderBeeWeek(k){
     <h2 class="sec">${esc(weekLabel(k))}</h2>
     <p class="sub">Best Employee Ever of the week. Ranked by number of people voting.</p>
     ${list.length ? `<div class="tools"><button class="btn sm" id="xwk">Export this week (.xlsx)</button></div>` : ""}
-    ${list.length ? rankRows(list) : `<div class="empty-state"><b>Nothing here</b>No votes left for this week.</div>`}`;
+    ${list.length ? list.map((r,i) => {
+      const pick = ownPick(r.nominee, k);
+      return `<div class="row" data-nm="${esc(r.nominee)}">
+        <span class="rk ${i===0?"top":""}">${i+1}</span>
+        <span class="nm">${esc(r.nominee)}
+          <span class="lead">Their gift card pick: ${pick ? esc(pick) : "none yet (they have not voted)"}</span></span>
+        <span class="ct"><b>${r.voters.size}</b> ${r.voters.size===1?"person":"people"}<br>
+          ${r.entries.length} vote${r.entries.length===1?"":"s"}</span>
+      </div>`;
+    }).join("") : `<div class="empty-state"><b>Nothing here</b>No votes left for this week.</div>`}`;
   wireCrumbs(parts);
   document.querySelectorAll(".row").forEach(r =>
     r.addEventListener("click", () => renderBeeNominee(k, r.dataset.nm)));
@@ -875,7 +893,8 @@ function renderBeeNominee(k, nominee){
                  .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   view.innerHTML = crumbs(parts) + `
     <h2 class="sec">${esc(nominee)}</h2>
-    <p class="sub">${es.length} vote${es.length===1?"":"s"} for Best Employee Ever, ${esc(weekLabel(k).toLowerCase())}</p>
+    <p class="sub">${es.length} vote${es.length===1?"":"s"} for Best Employee Ever, ${esc(weekLabel(k).toLowerCase())}.
+      Their own gift card pick: <b style="color:var(--blaze)">${esc(ownPick(nominee, k) || "none yet (they have not voted)")}</b></p>
     <div class="tools"><button class="btn ghost sm" id="copy">Copy all as text</button></div>
     ${es.map(entryCard).join("")}`;
   wireCrumbs(parts);
@@ -885,7 +904,7 @@ function renderBeeNominee(k, nominee){
       if(left) renderBeeNominee(k, nominee); else renderBeeWeek(k);
     })));
   $("copy").addEventListener("click", () => copyText(`${nominee} \u2014 Best Employee Ever, ${weekLabel(k)}\n${es.length} votes\n\n` +
-    es.map(e => `From ${e.nominator} (${fmtDate(e.created_at)}):\n${e.comment}\nGift card if they win: ${e.gift_card || "-"}`).join("\n\n")));
+    es.map(e => `From ${e.nominator} (${fmtDate(e.created_at)}):\n${e.comment}\nVoter\u2019s own gift card pick: ${e.gift_card || "-"}`).join("\n\n")));
 }
 
 /* Two-step delete. Nominations are not recoverable, so the confirm
@@ -1028,7 +1047,8 @@ function beeSheet(keys){
     .forEach(e => rows.push({
       Week: weekLabel(k), Rank: i + 1, Nominee: r.nominee, Votes: r.voters.size,
       "Voted By": e.nominator, Date: fmtDate(e.created_at),
-      "Why": e.comment, "Gift Card": e.gift_card || ""
+      "Why": e.comment, "Nominee's Gift Card Pick": ownPick(r.nominee, k),
+      "Voter's Gift Card Pick": e.gift_card || ""
     }))));
   return rows;
 }
@@ -1069,7 +1089,7 @@ function exportAll(){
     .map(e => ({ Date: fmtDate(e.created_at), Award: e.award, Nominee: e.nominee,
                  "Nominated By": e.nominator, Comment: e.comment,
                  Week: e.award === BEE ? weekLabel(weekKey(e)) : "",
-                 "Gift Card": e.gift_card || "" }));
+                 "Voter's Gift Card Pick": e.gift_card || "" }));
   const s2 = XLSX.utils.json_to_sheet(all); s2["!cols"] = autoWidth(all);
   XLSX.utils.book_append_sheet(wb, s2, "All Entries");
 
