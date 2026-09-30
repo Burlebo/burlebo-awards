@@ -176,15 +176,39 @@ h2.sec{font-size:22px;font-weight:800;font-style:italic;text-transform:uppercase
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--blaze);
   color:#140E06;font-weight:700;font-size:13px;padding:11px 20px;border-radius:2px;z-index:90;
   box-shadow:0 8px 26px rgba(0,0,0,.5)}
+/* ---------- home ---------- */
+.home{display:grid;gap:12px}
+.choice{display:block;width:100%;text-align:left;background:rgba(17,17,20,.92);border:1px solid var(--line);
+  border-radius:3px;padding:22px 22px;cursor:pointer;color:var(--white);font-family:var(--sans);
+  backdrop-filter:blur(7px);transition:border-color .15s,transform .15s,background .15s}
+.choice:hover{border-color:var(--blaze);transform:translateY(-2px)}
+.choice:focus-visible{outline:2px solid var(--white);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.choice{transition:none}.choice:hover{transform:none}}
+.choice .ck{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--blaze);margin-bottom:10px}
+.choice .ct{display:block;font-weight:800;font-style:italic;text-transform:uppercase;
+  letter-spacing:-.01em;line-height:1.02}
+.choice .cd{display:block;color:var(--dim);font-size:12.5px;line-height:1.5;margin-top:11px}
+.choice.big{padding:38px 26px;border-color:var(--blaze-dim);
+  background:linear-gradient(160deg,rgba(255,107,26,.16),rgba(17,17,20,.94) 58%)}
+.choice.big .ct{font-size:clamp(30px,7vw,46px)}
+.choice.small .ct{font-size:19px}
+.backlink{background:none;border:0;color:var(--dim);font-family:var(--mono);font-size:10px;
+  letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:0;margin:0 0 16px}
+.backlink:hover{color:var(--blaze)}
+.row .lead{display:block;font-size:12px;color:var(--dim);font-weight:400;margin-top:2px}
+.bubble.weekly{border-color:var(--blaze-dim)}
+.entry .gift{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim)}
+.entry .gift b{color:var(--blaze)}
 </style>
 </head>
 <body>
 <div class="wrap" id="wrap">
   <div class="mast">
     <img id="logo" alt="BURLEBO">
-    <div class="kicker">Year-End Awards 2026</div>
-    <h1>Recognize<br>Your Team</h1>
-    <p class="tag">Someone go above and beyond this year? Put their name in. Every entry gets read.</p>
+    <div class="kicker" id="kicker">BURLEBO Awards 2026</div>
+    <h1 id="headline">Recognize<br>Your Team</h1>
+    <p class="tag" id="tagline">Two ways to give someone credit. Pick one.</p>
   </div>
   <div id="view"></div>
   <div class="adminlink" id="adminlink"><button id="adminbtn">Log in as admin</button></div>
@@ -367,17 +391,56 @@ function wireCombo(id, getOptions, onPick){
 }
 
 /* ============================================================
-   PUBLIC FORM
+   PUBLIC: HOME + TWO FORMS
    ============================================================ */
-let nomCombo = null, subCombo = null, pickedAward = "";
+const BEE = "BEST EMPLOYEE EVER";
+const OTHER_AWARDS = AWARDS.filter(a => a[0] !== BEE);
 
-function renderForm(){
+function setMast(kicker, headline, tag){
+  $("kicker").textContent = kicker;
+  $("headline").innerHTML = headline;
+  $("tagline").textContent = tag;
+}
+function showPublic(){
   $("adminlink").style.display = "";
   document.querySelector(".wrap").classList.remove("wide");
   document.querySelector(".mast").style.display = "";
+}
+
+/* ---- home: two big choices ---- */
+function renderHome(){
+  showPublic();
+  setMast("BURLEBO Awards 2026", "Recognize<br>Your Team",
+    "Two ways to give someone credit. Pick one.");
+  view.innerHTML = `
+    <div class="home">
+      <button class="choice big" id="go-bee">
+        <span class="ck">Every week &middot; winner gets a gift card</span>
+        <span class="ct">Vote for the best employee ever of the week</span>
+        <span class="cd">One vote per person, per week. Voting resets every Monday.</span>
+      </button>
+      <button class="choice small" id="go-other">
+        <span class="ck">Year-end awards</span>
+        <span class="ct">Vote for other awards</span>
+        <span class="cd">${OTHER_AWARDS.map(a => esc(a[0])).join(" &middot; ")}</span>
+      </button>
+    </div>`;
+  $("go-bee").addEventListener("click", renderBeeForm);
+  $("go-other").addEventListener("click", renderForm);
+  window.scrollTo({ top:0 });
+}
+
+/* ---- year-end awards form (everything except Best Employee Ever) ---- */
+let nomCombo = null, subCombo = null, pickedAward = "";
+
+function renderForm(){
+  showPublic();
+  setMast("Year-End Awards 2026", "Recognize<br>Your Team",
+    "Someone go above and beyond this year? Put their name in. Every entry gets read.");
   pickedAward = "";
   view.innerHTML = `
     <div class="card">
+      <button class="backlink" id="home">&lsaquo; Back</button>
       <div class="rule"></div>
       <div class="fieldwrap">
         <label class="fl" for="nominator">Your name</label>
@@ -391,7 +454,7 @@ function renderForm(){
       <div class="fieldwrap">
         <label class="fl">Award</label>
         <div class="awardsel">
-          ${AWARDS.map(([n,d],i)=>`
+          ${OTHER_AWARDS.map(([n,d],i)=>`
             <label class="aw-opt" data-aw="${esc(n)}">
               <input type="radio" name="award" value="${esc(n)}" id="aw${i}">
               <span><span class="aw-name">${esc(n)}</span>
@@ -407,6 +470,7 @@ function renderForm(){
       <div id="formerr"></div>
     </div>`;
 
+  $("home").addEventListener("click", renderHome);
   nomCombo = wireCombo("nominator", () => PEOPLE, () => { subCombo.reset(); syncHelp(); });
   subCombo = wireCombo("nominee", () => PEOPLE.filter(n => n !== nomCombo.value));
 
@@ -421,6 +485,7 @@ function renderForm(){
       ? `You cannot nominate yourself, so ${nomCombo.value} is not in this list.`
       : "You cannot nominate yourself.";
   }
+  window.scrollTo({ top:0 });
 }
 
 async function submitEntry(){
@@ -447,20 +512,105 @@ async function submitEntry(){
     .insert({ nominator, nominee, award: pickedAward, comment });
   btn.disabled = false; btn.textContent = "Submit nomination";
   if(error){ err.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
-  renderThanks(nominee);
+  renderThanks(nominee, false);
 }
 
-function renderThanks(nominee){
+/* ---- weekly Best Employee Ever vote ---- */
+let beeVoter = null, beePick = null;
+
+function renderBeeForm(){
+  showPublic();
+  setMast("Weekly \u00B7 Best Employee Ever", "Best Employee Ever<br>of the Week",
+    "One vote per week. Whoever wins gets a gift card of their choice.");
+  view.innerHTML = `
+    <div class="card">
+      <button class="backlink" id="home">&lsaquo; Back</button>
+      <div class="rule"></div>
+      <div class="fieldwrap">
+        <label class="fl" for="bee-voter">Who are you?</label>
+        ${combo("bee-voter","Start typing your name\u2026")}
+      </div>
+      <div class="fieldwrap">
+        <label class="fl" for="bee-pick">Who are you voting for?</label>
+        ${combo("bee-pick","Pick a teammate")}
+        <p class="help" id="beehelp">You cannot vote for yourself.</p>
+      </div>
+      <div class="fieldwrap">
+        <label class="fl" for="bee-why">Why are you voting for them?</label>
+        <textarea id="bee-why" placeholder="What did they do this week? A big win, a small kindness, anything."></textarea>
+      </div>
+      <div class="fieldwrap">
+        <label class="fl" for="bee-gift">If they win, where is the gift card of their choice?</label>
+        <input type="text" id="bee-gift" maxlength="80" placeholder="Any store or restaurant">
+        <p class="help">One winner each week gets a gift card.</p>
+      </div>
+      <button class="btn wide" id="bee-submit">Cast my vote</button>
+      <div id="beeerr"></div>
+    </div>`;
+
+  $("home").addEventListener("click", renderHome);
+  beeVoter = wireCombo("bee-voter", () => PEOPLE, () => { beePick.reset(); syncHelp(); });
+  beePick  = wireCombo("bee-pick", () => PEOPLE.filter(n => n !== beeVoter.value));
+  $("bee-submit").addEventListener("click", submitBee);
+  function syncHelp(){
+    $("beehelp").textContent = beeVoter.value
+      ? `You cannot vote for yourself, so ${beeVoter.value} is not in this list.`
+      : "You cannot vote for yourself.";
+  }
+  window.scrollTo({ top:0 });
+}
+
+async function submitBee(){
+  const err = $("beeerr"), btn = $("bee-submit");
+  const nominator = beeVoter.value, nominee = beePick.value;
+  const comment = $("bee-why").value.trim();
+  const gift_card = $("bee-gift").value.trim();
+
+  const problems = [];
+  if(!nominator) problems.push("pick your name from the list");
+  if(!nominee)   problems.push("pick who you are voting for");
+  if(comment.length < 10) problems.push("write a bit about why");
+  if(gift_card.length < 2) problems.push("say where the gift card should be from");
+  if(problems.length){
+    err.innerHTML = `<div class="err">Almost there \u2014 please ${problems.join(", ")}.</div>`;
+    return;
+  }
+  if(nominator === nominee){
+    err.innerHTML = `<div class="err">You cannot vote for yourself.</div>`;
+    return;
+  }
+
+  err.innerHTML = ""; btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Submitting`;
+  const { error } = await db.from("awards_entries")
+    .insert({ nominator, nominee, award: BEE, comment, gift_card });
+  btn.disabled = false; btn.textContent = "Cast my vote";
+  if(error){
+    const dup = error.code === "23505" || /duplicate|unique/i.test(error.message);
+    err.innerHTML = `<div class="err">${dup
+      ? `${esc(nominator)} has already voted this week. Voting opens back up on Monday.`
+      : esc(error.message)}</div>`;
+    return;
+  }
+  renderThanks(nominee, true);
+}
+
+function renderThanks(nominee, weekly){
   document.querySelector(".mast").style.display = "none";
   $("adminlink").style.display = "";
   view.innerHTML = `
     <div class="card thanks">
       <img class="mark" src="${MARK}" alt="">
       <h2>Thank You</h2>
-      <p>Your nomination for <strong>${esc(nominee)}</strong> is in. Leadership reviews every entry at the end of the year.</p>
-      <button class="btn" id="again">Submit another</button>
+      <p>${weekly
+        ? `Your vote for <strong>${esc(nominee)}</strong> is in. You can vote again next week.`
+        : `Your nomination for <strong>${esc(nominee)}</strong> is in. Leadership reviews every entry at the end of the year.`}</p>
+      <div class="btnrow" style="justify-content:center">
+        ${weekly ? "" : `<button class="btn" id="again">Submit another</button>`}
+        <button class="btn ${weekly ? "" : "ghost"}" id="tohome">Back to start</button>
+      </div>
     </div>`;
-  $("again").addEventListener("click", renderForm);
+  if(!weekly) $("again").addEventListener("click", renderForm);
+  $("tohome").addEventListener("click", renderHome);
   window.scrollTo({ top:0, behavior:"smooth" });
 }
 
@@ -485,13 +635,13 @@ function renderLogin(){
       <input type="password" id="pw" placeholder="Password" autocomplete="current-password">
       <div class="btnrow" style="margin-top:16px">
         <button class="btn" id="go">Enter</button>
-        <button class="btn ghost" id="back">Back to form</button>
+        <button class="btn ghost" id="back">Back</button>
       </div>
       <div id="pwerr"></div>
     </div>`;
   $("go").addEventListener("click", tryLogin);
   $("pw").addEventListener("keydown", e => { if(e.key === "Enter") tryLogin(); });
-  $("back").addEventListener("click", () => { document.querySelector(".mast").style.display=""; renderForm(); });
+  $("back").addEventListener("click", renderHome);
   $("pw").focus();
 }
 
@@ -535,9 +685,11 @@ function wireCrumbs(parts){
 function renderAwards(){
   document.querySelector(".wrap").classList.add("wide");
   const parts = [{ t:"Awards" }];
-  const rows = AWARDS.map(([name]) => {
+  const order = [AWARDS.find(a => a[0] === BEE), ...OTHER_AWARDS].filter(Boolean);
+  const rows = order.map(([name]) => {
     const es = DATA.filter(e => e.award === name);
-    return { name, subs: es.length, people: new Set(es.map(e => e.nominee)).size };
+    const weeks = new Set(es.map(weekKey)).size;
+    return { name, subs: es.length, people: new Set(es.map(e => e.nominee)).size, weeks };
   });
   view.innerHTML = crumbs(parts) + `
     <h2 class="sec">All Awards</h2>
@@ -549,29 +701,29 @@ function renderAwards(){
     </div>
     <div class="bubbles">
       ${rows.map(r => `
-        <button class="bubble ${r.subs?"":"empty"}" data-aw="${esc(r.name)}">
+        <button class="bubble ${r.subs?"":"empty"} ${r.name===BEE?"weekly":""}" data-aw="${esc(r.name)}">
           <span class="n">${r.subs}</span>
           <span class="t">${esc(r.name)}
-            <span class="s">${r.subs ? r.people + (r.people===1?" person":" people")+" named" : "No nominations yet"}</span>
+            <span class="s">${r.name === BEE
+              ? (r.subs ? `Weekly vote \u00B7 ${r.weeks} week${r.weeks===1?"":"s"}` : "Weekly vote \u00B7 no votes yet")
+              : (r.subs ? r.people + (r.people===1?" person":" people")+" named" : "No nominations yet")}</span>
           </span>
         </button>`).join("")}
     </div>`;
   wireCrumbs(parts);
   document.querySelectorAll(".bubble").forEach(b =>
-    b.addEventListener("click", () => renderAward(b.dataset.aw)));
+    b.addEventListener("click", () => b.dataset.aw === BEE ? renderBeeWeeks() : renderAward(b.dataset.aw)));
   $("xall").addEventListener("click", exportAll);
   $("people").addEventListener("click", renderPeople);
   $("logout").addEventListener("click", () => {
     sessionStorage.removeItem("aw-pw"); ADMIN_PW = ""; DATA = [];
-    document.querySelector(".wrap").classList.remove("wide");
-    document.querySelector(".mast").style.display = ""; renderForm();
+    renderHome();
   });
 }
 
 /* Rank by distinct nominators first — one enthusiastic person
    writing five entries should not outrank broad support. */
-function tally(award){
-  const es = DATA.filter(e => e.award === award);
+function rank(es){
   const by = {};
   es.forEach(e => {
     (by[e.nominee] ||= { nominee:e.nominee, entries:[], voters:new Set() });
@@ -582,6 +734,7 @@ function tally(award){
     b.voters.size - a.voters.size || b.entries.length - a.entries.length ||
     a.nominee.localeCompare(b.nominee));
 }
+const tally = award => rank(DATA.filter(e => e.award === award));
 
 /* ---- level 2: nominees for one award ---- */
 function renderAward(award){
@@ -594,18 +747,21 @@ function renderAward(award){
     ${list.length ? `<div class="tools">
       <button class="btn sm" id="xaw">Export this award (.xlsx)</button>
     </div>` : ""}
-    ${list.length ? list.map((r,i) => `
-      <div class="row" data-nm="${esc(r.nominee)}" data-aw="${esc(award)}">
-        <span class="rk ${i===0?"top":""}">${i+1}</span>
-        <span class="nm">${esc(r.nominee)}</span>
-        <span class="ct"><b>${r.voters.size}</b> ${r.voters.size===1?"person":"people"}<br>
-          ${r.entries.length} submission${r.entries.length===1?"":"s"}</span>
-      </div>`).join("")
-    : `<div class="empty-state"><b>Nothing yet</b>No one has been nominated for this award.</div>`}`;
+    ${list.length ? rankRows(list) : `<div class="empty-state"><b>Nothing yet</b>No one has been nominated for this award.</div>`}`;
   wireCrumbs(parts);
   document.querySelectorAll(".row").forEach(r =>
-    r.addEventListener("click", () => renderNominee(r.dataset.aw, r.dataset.nm)));
+    r.addEventListener("click", () => renderNominee(award, r.dataset.nm)));
   if(list.length) $("xaw").addEventListener("click", () => exportAward(award));
+}
+
+function rankRows(list){
+  return list.map((r,i) => `
+    <div class="row" data-nm="${esc(r.nominee)}">
+      <span class="rk ${i===0?"top":""}">${i+1}</span>
+      <span class="nm">${esc(r.nominee)}</span>
+      <span class="ct"><b>${r.voters.size}</b> ${r.voters.size===1?"person":"people"}<br>
+        ${r.entries.length} submission${r.entries.length===1?"":"s"}</span>
+    </div>`).join("");
 }
 
 /* ---- level 3: every entry for one nominee ---- */
@@ -620,33 +776,128 @@ function renderNominee(award, nominee){
     <h2 class="sec">${esc(nominee)}</h2>
     <p class="sub">${es.length} submission${es.length===1?"":"s"} from ${voters} ${voters===1?"person":"people"} for ${esc(award)}</p>
     <div class="tools"><button class="btn ghost sm" id="copy">Copy all as text</button></div>
-    ${es.map(e => `
-      <div class="entry" id="e-${e.id}">
-        <div class="meta"><span>From <b>${esc(e.nominator)}</b></span>
-          <span>${fmtDate(e.created_at)}<button class="del" data-del="${e.id}">Delete</button></span></div>
-        <p>${esc(e.comment)}</p>
-      </div>`).join("")}`;
+    ${es.map(entryCard).join("")}`;
   wireCrumbs(parts);
   document.querySelectorAll("[data-del]").forEach(b =>
-    b.addEventListener("click", () => confirmDelete(b.dataset.del, award, nominee)));
-  $("copy").addEventListener("click", () => {
-    const txt = `${nominee} \u2014 ${award}\n${es.length} submissions from ${voters} people\n\n` +
-      es.map(e => `From ${e.nominator} (${fmtDate(e.created_at)}):\n${e.comment}`).join("\n\n");
-    navigator.clipboard.writeText(txt).then(() => toast("Copied to clipboard"),
-      () => toast("Could not copy"));
-  });
+    b.addEventListener("click", () => confirmDelete(b.dataset.del, () => {
+      const left = DATA.filter(x => x.award === award && x.nominee === nominee).length;
+      if(left) renderNominee(award, nominee); else renderAward(award);
+    })));
+  $("copy").addEventListener("click", () => copyText(`${nominee} \u2014 ${award}\n${es.length} submissions from ${voters} people\n\n` +
+    es.map(e => `From ${e.nominator} (${fmtDate(e.created_at)}):\n${e.comment}`).join("\n\n")));
+}
+
+function entryCard(e){
+  return `
+    <div class="entry" id="e-${e.id}">
+      <div class="meta"><span>From <b>${esc(e.nominator)}</b></span>
+        <span>${fmtDate(e.created_at)}<button class="del" data-del="${e.id}">Delete</button></span></div>
+      <p>${esc(e.comment)}</p>
+      ${e.award === BEE ? `<div class="gift">Gift card if they win: <b>${esc(e.gift_card || "\u2014")}</b></div>` : ""}
+    </div>`;
+}
+function copyText(txt){
+  navigator.clipboard.writeText(txt).then(() => toast("Copied to clipboard"),
+    () => toast("Could not copy"));
+}
+
+/* ============================================================
+   ADMIN: BEST EMPLOYEE EVER, GROUPED BY WEEK
+   Weeks run Monday to Sunday, Central time. The database stamps
+   week_start on insert; older entries without one are grouped
+   together at the bottom.
+   ============================================================ */
+const NO_WEEK = "none";
+const weekKey = e => e.week_start || NO_WEEK;
+function weekLabel(k){
+  if(k === NO_WEEK) return "Before weekly voting";
+  const [y,m,d] = k.split("-").map(Number);
+  return "Week of " + new Date(y, m-1, d).toLocaleDateString(undefined,
+    { month:"short", day:"numeric", year:"numeric" });
+}
+function beeWeeks(){
+  const weeks = {};
+  DATA.filter(e => e.award === BEE).forEach(e => (weeks[weekKey(e)] ||= []).push(e));
+  const keys = Object.keys(weeks).sort((a,b) =>
+    a === NO_WEEK ? 1 : b === NO_WEEK ? -1 : b.localeCompare(a));
+  return { weeks, keys };
+}
+
+/* ---- list of weeks ---- */
+function renderBeeWeeks(){
+  const parts = [{ t:"Awards", fn:renderAwards }, { t:BEE }];
+  const { weeks, keys } = beeWeeks();
+  const total = keys.reduce((n,k) => n + weeks[k].length, 0);
+  view.innerHTML = crumbs(parts) + `
+    <h2 class="sec">Best Employee Ever</h2>
+    <p class="sub">Weekly vote, one per person per week. Weeks run Monday to Sunday.
+      ${total} vote${total===1?"":"s"} across ${keys.length} week${keys.length===1?"":"s"}.</p>
+    ${total ? `<div class="tools"><button class="btn sm" id="xbee">Export all weeks (.xlsx)</button></div>` : ""}
+    ${keys.length ? keys.map(k => {
+      const r = rank(weeks[k]);
+      const top = r.filter(x => x.voters.size === r[0].voters.size);
+      const lead = (top.length > 1 ? "Tied: " : "Leading: ") + top.map(x => x.nominee).join(", ");
+      return `<div class="row" data-wk="${k}">
+        <span class="nm">${esc(weekLabel(k))}
+          <span class="lead">${esc(lead)}</span></span>
+        <span class="ct"><b>${weeks[k].length}</b> vote${weeks[k].length===1?"":"s"}</span>
+      </div>`;
+    }).join("") : `<div class="empty-state"><b>No votes yet</b>Weekly votes will show up here.</div>`}`;
+  wireCrumbs(parts);
+  document.querySelectorAll("[data-wk]").forEach(r =>
+    r.addEventListener("click", () => renderBeeWeek(r.dataset.wk)));
+  if(total) $("xbee").addEventListener("click", () =>
+    exportRows(beeSheet(keys), "Best Employee Ever", "BURLEBO Awards - Best Employee Ever"));
+}
+
+/* ---- one week, ranked ---- */
+function renderBeeWeek(k){
+  const parts = [{ t:"Awards", fn:renderAwards }, { t:BEE, fn:renderBeeWeeks }, { t:weekLabel(k) }];
+  const { weeks } = beeWeeks();
+  const list = rank(weeks[k] || []);
+  view.innerHTML = crumbs(parts) + `
+    <h2 class="sec">${esc(weekLabel(k))}</h2>
+    <p class="sub">Best Employee Ever of the week. Ranked by number of people voting.</p>
+    ${list.length ? `<div class="tools"><button class="btn sm" id="xwk">Export this week (.xlsx)</button></div>` : ""}
+    ${list.length ? rankRows(list) : `<div class="empty-state"><b>Nothing here</b>No votes left for this week.</div>`}`;
+  wireCrumbs(parts);
+  document.querySelectorAll(".row").forEach(r =>
+    r.addEventListener("click", () => renderBeeNominee(k, r.dataset.nm)));
+  if(list.length) $("xwk").addEventListener("click", () =>
+    exportRows(beeSheet([k]), weekLabel(k), `BURLEBO Awards - Best Employee Ever - ${weekLabel(k)}`));
+}
+
+/* ---- one person's votes for one week ---- */
+function renderBeeNominee(k, nominee){
+  const parts = [{ t:"Awards", fn:renderAwards }, { t:BEE, fn:renderBeeWeeks },
+                 { t:weekLabel(k), fn:() => renderBeeWeek(k) }, { t:nominee }];
+  const es = DATA.filter(e => e.award === BEE && weekKey(e) === k && e.nominee === nominee)
+                 .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  view.innerHTML = crumbs(parts) + `
+    <h2 class="sec">${esc(nominee)}</h2>
+    <p class="sub">${es.length} vote${es.length===1?"":"s"} for Best Employee Ever, ${esc(weekLabel(k).toLowerCase())}</p>
+    <div class="tools"><button class="btn ghost sm" id="copy">Copy all as text</button></div>
+    ${es.map(entryCard).join("")}`;
+  wireCrumbs(parts);
+  document.querySelectorAll("[data-del]").forEach(b =>
+    b.addEventListener("click", () => confirmDelete(b.dataset.del, () => {
+      const left = DATA.filter(x => x.award === BEE && weekKey(x) === k && x.nominee === nominee).length;
+      if(left) renderBeeNominee(k, nominee); else renderBeeWeek(k);
+    })));
+  $("copy").addEventListener("click", () => copyText(`${nominee} \u2014 Best Employee Ever, ${weekLabel(k)}\n${es.length} votes\n\n` +
+    es.map(e => `From ${e.nominator} (${fmtDate(e.created_at)}):\n${e.comment}\nGift card if they win: ${e.gift_card || "-"}`).join("\n\n")));
 }
 
 /* Two-step delete. Nominations are not recoverable, so the confirm
    lives inline on the card rather than in a browser dialog that is
    easy to dismiss by reflex. */
-function confirmDelete(id, award, nominee){
+function confirmDelete(id, after){
   const card = $("e-" + id);
   if(!card || card.querySelector(".confirm")) return;
   card.classList.add("confirming");
   const box = document.createElement("div");
   box.className = "confirm";
-  box.innerHTML = `<span>Delete this nomination for good?</span>
+  box.innerHTML = `<span>Delete this entry for good?</span>
     <button class="btn danger sm" data-yes>Delete</button>
     <button class="btn ghost sm" data-no>Cancel</button>`;
   card.appendChild(box);
@@ -662,11 +913,9 @@ function confirmDelete(id, award, nominee){
         ? "Session expired \u2014 log out and back in." : error.message;
       btn.disabled = false; btn.textContent = "Delete"; return;
     }
-    DATA = DATA.filter(x => x.id !== id);
-    toast("Nomination deleted");
-    // If that was the last one for this nominee, there is nothing left to show.
-    const left = DATA.filter(x => x.award === award && x.nominee === nominee).length;
-    if(left) renderNominee(award, nominee); else renderAward(award);
+    DATA = DATA.filter(x => String(x.id) !== String(id));
+    toast("Deleted");
+    after();
   });
 }
 
@@ -749,6 +998,7 @@ async function addPerson(){
    EXPORT
    ============================================================ */
 const SAFE = s => s.replace(/[\\\/\?\*\[\]:]/g, "").slice(0, 31);
+const FILE = s => s.replace(/[\\\/:*?"<>|]/g, "");
 
 function autoWidth(rows){
   if(!rows.length) return [];
@@ -769,22 +1019,44 @@ function awardSheet(award){
   return rows;
 }
 
-function exportAward(award){
-  const rows = awardSheet(award);
+/* Best Employee Ever: ranked within each week, newest week first. */
+function beeSheet(keys){
+  const { weeks } = beeWeeks();
+  const rows = [];
+  keys.forEach(k => rank(weeks[k] || []).forEach((r, i) => r.entries
+    .sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
+    .forEach(e => rows.push({
+      Week: weekLabel(k), Rank: i + 1, Nominee: r.nominee, Votes: r.voters.size,
+      "Voted By": e.nominator, Date: fmtDate(e.created_at),
+      "Why": e.comment, "Gift Card": e.gift_card || ""
+    }))));
+  return rows;
+}
+
+function exportRows(rows, sheet, file){
   if(!rows.length){ toast("Nothing to export"); return; }
   const ws = XLSX.utils.json_to_sheet(rows); ws["!cols"] = autoWidth(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, SAFE(award));
-  XLSX.writeFile(wb, `BURLEBO Awards - ${award.replace(/[\\\/:*?"<>|]/g,"")}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, SAFE(sheet));
+  XLSX.writeFile(wb, FILE(file) + ".xlsx");
   toast("Downloaded");
+}
+
+function exportAward(award){
+  exportRows(awardSheet(award), award, `BURLEBO Awards - ${award}`);
 }
 
 function exportAll(){
   if(!DATA.length){ toast("Nothing to export"); return; }
   const wb = XLSX.utils.book_new();
+  const { weeks, keys } = beeWeeks();
 
   const summary = [];
-  AWARDS.forEach(([name]) => tally(name).forEach((r, i) => summary.push({
+  keys.forEach(k => rank(weeks[k]).forEach((r, i) => summary.push({
+    Award: `${BEE} (${weekLabel(k)})`, Rank: i + 1, Nominee: r.nominee,
+    "Distinct Nominators": r.voters.size, "Total Submissions": r.entries.length
+  })));
+  OTHER_AWARDS.forEach(([name]) => tally(name).forEach((r, i) => summary.push({
     Award: name, Rank: i + 1, Nominee: r.nominee,
     "Distinct Nominators": r.voters.size, "Total Submissions": r.entries.length
   })));
@@ -795,11 +1067,18 @@ function exportAll(){
 
   const all = DATA.slice().sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
     .map(e => ({ Date: fmtDate(e.created_at), Award: e.award, Nominee: e.nominee,
-                 "Nominated By": e.nominator, Comment: e.comment }));
+                 "Nominated By": e.nominator, Comment: e.comment,
+                 Week: e.award === BEE ? weekLabel(weekKey(e)) : "",
+                 "Gift Card": e.gift_card || "" }));
   const s2 = XLSX.utils.json_to_sheet(all); s2["!cols"] = autoWidth(all);
   XLSX.utils.book_append_sheet(wb, s2, "All Entries");
 
-  AWARDS.forEach(([name]) => {
+  const bee = beeSheet(keys);
+  if(bee.length){
+    const ws = XLSX.utils.json_to_sheet(bee); ws["!cols"] = autoWidth(bee);
+    XLSX.utils.book_append_sheet(wb, ws, SAFE(BEE));
+  }
+  OTHER_AWARDS.forEach(([name]) => {
     const rows = awardSheet(name);
     if(!rows.length) return;
     const ws = XLSX.utils.json_to_sheet(rows); ws["!cols"] = autoWidth(rows);
@@ -815,8 +1094,8 @@ function exportAll(){
    BOOT
    ============================================================ */
 (async () => {
-  renderForm();          // paint immediately with the seed list
-  if(await loadPeople() && !ADMIN_PW) renderForm();   // repaint if the live roster differs
+  renderHome();       // paint immediately with the seed list
+  await loadPeople(); // dropdowns read PEOPLE live, so no repaint is needed
 })();
 </script>
 </body>
