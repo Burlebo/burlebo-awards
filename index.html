@@ -200,6 +200,23 @@ h2.sec{font-size:22px;font-weight:800;font-style:italic;text-transform:uppercase
 .bubble.weekly{border-color:var(--blaze-dim)}
 .entry .gift{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim)}
 .entry .gift b{color:var(--blaze)}
+.row .lead.novote{color:#FF9E8C;font-weight:600}
+.wtag{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--blaze);color:#140E06;font-weight:700;border-radius:2px;padding:2px 7px;margin-left:8px;vertical-align:2px}
+.winners{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px;margin-bottom:18px}
+.wbox{background:rgba(17,17,20,.92);border:1px solid var(--line);border-top:2px solid var(--blaze);border-radius:2px;
+  padding:13px 15px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(7px)}
+.wbox.none{border-top-color:var(--line-2)}
+.wbox .wl{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);display:block}
+.wbox .wn{font-weight:700;font-size:15px;display:block;margin-top:2px}
+.wbox.none .wn{color:var(--faint);font-weight:400;font-style:italic}
+.wbox > span{flex:1}
+.row .pick{flex:none}
+.pickbox{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px 0 10px;padding:11px 14px;
+  background:rgba(255,107,26,.07);border:1px solid var(--blaze-dim);border-radius:2px}
+.pickbox span{flex:1;min-width:160px;font-size:13px}
+.yrsel{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.yrsel .btn.on{background:var(--blaze);color:#140E06;border-color:var(--blaze)}
 </style>
 </head>
 <body>
@@ -659,7 +676,7 @@ async function tryLogin(){
     return;
   }
   ADMIN_PW = pw; sessionStorage.setItem("aw-pw", pw);
-  DATA = data || []; renderAwards();
+  DATA = data || []; await loadWinners(); renderAwards();
 }
 
 async function loadAdmin(){
@@ -668,7 +685,7 @@ async function loadAdmin(){
   $("adminlink").style.display = "none";
   const { data, error } = await db.rpc("awards_admin_read", { pw: ADMIN_PW });
   if(error){ sessionStorage.removeItem("aw-pw"); renderLogin(); return; }
-  DATA = data || []; renderAwards();
+  DATA = data || []; await loadWinners(); renderAwards();
 }
 
 function crumbs(parts){
@@ -696,6 +713,7 @@ function renderAwards(){
     <p class="sub">${DATA.length} total nomination${DATA.length===1?"":"s"} across ${AWARDS.length} awards. Click an award to see who has been named.</p>
     <div class="tools">
       <button class="btn sm" id="xall">Export everything (.xlsx)</button>
+      <button class="btn ghost sm" id="lb">Leaderboard</button>
       <button class="btn ghost sm" id="people">Manage people (${PEOPLE.length})</button>
       <button class="btn ghost sm" id="logout">Log out</button>
     </div>
@@ -715,8 +733,9 @@ function renderAwards(){
     b.addEventListener("click", () => b.dataset.aw === BEE ? renderBeeWeeks() : renderAward(b.dataset.aw)));
   $("xall").addEventListener("click", exportAll);
   $("people").addEventListener("click", renderPeople);
+  $("lb").addEventListener("click", () => renderLeaderboard());
   $("logout").addEventListener("click", () => {
-    sessionStorage.removeItem("aw-pw"); ADMIN_PW = ""; DATA = [];
+    sessionStorage.removeItem("aw-pw"); ADMIN_PW = ""; DATA = []; WINNERS = [];
     renderHome();
   });
 }
@@ -823,13 +842,36 @@ function beeWeeks(){
   return { weeks, keys };
 }
 
-/* A person's gift card answer comes from votes THEY cast.
-   Prefer their vote from the same week, else their most recent one. */
+/* A person's gift card answer comes from the vote THEY cast in
+   that same week. If they have not voted that week, there is no pick:
+   they need to vote that week to count. */
+const NO_VOTE = "Has not voted this week";
 function ownPick(name, k){
-  const mine = DATA.filter(e => e.award === BEE && e.nominator === name && e.gift_card)
+  const mine = DATA.filter(e => e.award === BEE && e.nominator === name &&
+                                weekKey(e) === k && e.gift_card)
                    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-  const same = mine.find(e => weekKey(e) === k);
-  return (same || mine[0] || {}).gift_card || "";
+  return (mine[0] || {}).gift_card || "";
+}
+
+/* ---- weekly winners: one Office + one Warehouse per week ---- */
+const CATS = ["Office", "Warehouse"];
+let WINNERS = [];   // { week_start, category, nominee }
+async function loadWinners(){
+  const { data, error } = await db.rpc("awards_admin_winners", { pw: ADMIN_PW });
+  WINNERS = error ? [] : (data || []);
+}
+const winnerOf = (k, cat) => (WINNERS.find(w => w.week_start === k && w.category === cat) || {}).nominee || "";
+const winsIn = (k, name) => WINNERS.filter(w => w.week_start === k && w.nominee === name).map(w => w.category);
+async function setWinner(k, cat, nominee){
+  const { error } = await db.rpc("awards_set_winner",
+    { pw: ADMIN_PW, p_week: k, p_category: cat, p_nominee: nominee });
+  if(error){ toast("Could not save winner"); return false; }
+  await loadWinners(); return true;
+}
+async function clearWinner(k, cat){
+  const { error } = await db.rpc("awards_clear_winner", { pw: ADMIN_PW, p_week: k, p_category: cat });
+  if(error){ toast("Could not clear winner"); return false; }
+  await loadWinners(); return true;
 }
 
 /* ---- list of weeks ---- */
@@ -841,11 +883,17 @@ function renderBeeWeeks(){
     <h2 class="sec">Best Employee Ever</h2>
     <p class="sub">Weekly vote, one per person per week. Weeks run Monday to Sunday.
       ${total} vote${total===1?"":"s"} across ${keys.length} week${keys.length===1?"":"s"}.</p>
-    ${total ? `<div class="tools"><button class="btn sm" id="xbee">Export all weeks (.xlsx)</button></div>` : ""}
+    <div class="tools">
+      ${total ? `<button class="btn sm" id="xbee">Export all weeks (.xlsx)</button>` : ""}
+      <button class="btn ghost sm" id="lb">Leaderboard</button>
+    </div>
     ${keys.length ? keys.map(k => {
       const r = rank(weeks[k]);
       const top = r.filter(x => x.voters.size === r[0].voters.size);
-      const lead = (top.length > 1 ? "Tied: " : "Leading: ") + top.map(x => x.nominee).join(", ");
+      const picked = CATS.filter(c => winnerOf(k, c));
+      const lead = picked.length
+        ? CATS.map(c => `${c}: ${winnerOf(k, c) || "not picked"}`).join(" \u00B7 ")
+        : (top.length > 1 ? "Tied: " : "Leading: ") + top.map(x => x.nominee).join(", ");
       return `<div class="row" data-wk="${k}">
         <span class="nm">${esc(weekLabel(k))}
           <span class="lead">${esc(lead)}</span></span>
@@ -855,6 +903,7 @@ function renderBeeWeeks(){
   wireCrumbs(parts);
   document.querySelectorAll("[data-wk]").forEach(r =>
     r.addEventListener("click", () => renderBeeWeek(r.dataset.wk)));
+  $("lb").addEventListener("click", () => renderLeaderboard());
   if(total) $("xbee").addEventListener("click", () =>
     exportRows(beeSheet(keys), "Best Employee Ever", "BURLEBO Awards - Best Employee Ever"));
 }
@@ -864,25 +913,100 @@ function renderBeeWeek(k){
   const parts = [{ t:"Awards", fn:renderAwards }, { t:BEE, fn:renderBeeWeeks }, { t:weekLabel(k) }];
   const { weeks } = beeWeeks();
   const list = rank(weeks[k] || []);
+  const canPick = k !== NO_WEEK;
   view.innerHTML = crumbs(parts) + `
     <h2 class="sec">${esc(weekLabel(k))}</h2>
-    <p class="sub">Best Employee Ever of the week. Ranked by number of people voting.</p>
+    <p class="sub">Best Employee Ever of the week. Ranked by number of people voting.
+      ${canPick ? "Click Pick winner on someone to make them the Office or Warehouse winner." : ""}</p>
+    ${canPick ? `<div class="winners">${CATS.map(c => {
+      const w = winnerOf(k, c);
+      return `<div class="wbox ${w ? "" : "none"}">
+        <span><span class="wl">${c} winner</span><span class="wn">${w ? esc(w) : "Not picked yet"}</span></span>
+        ${w ? `<button class="btn ghost sm" data-clear="${c}">Clear</button>` : ""}
+      </div>`;
+    }).join("")}</div>` : ""}
     ${list.length ? `<div class="tools"><button class="btn sm" id="xwk">Export this week (.xlsx)</button></div>` : ""}
     ${list.length ? list.map((r,i) => {
       const pick = ownPick(r.nominee, k);
+      const won = winsIn(k, r.nominee);
       return `<div class="row" data-nm="${esc(r.nominee)}">
         <span class="rk ${i===0?"top":""}">${i+1}</span>
-        <span class="nm">${esc(r.nominee)}
-          <span class="lead">Their gift card pick: ${pick ? esc(pick) : "none yet (they have not voted)"}</span></span>
+        <span class="nm">${esc(r.nominee)}${won.map(c => `<span class="wtag">${c} winner</span>`).join("")}
+          ${pick ? `<span class="lead">Their gift card pick: ${esc(pick)}</span>`
+                 : `<span class="lead novote">${NO_VOTE}</span>`}</span>
         <span class="ct"><b>${r.voters.size}</b> ${r.voters.size===1?"person":"people"}<br>
           ${r.entries.length} vote${r.entries.length===1?"":"s"}</span>
+        ${canPick ? `<button class="btn ghost sm pick" data-pick="${esc(r.nominee)}">Pick winner</button>` : ""}
       </div>`;
     }).join("") : `<div class="empty-state"><b>Nothing here</b>No votes left for this week.</div>`}`;
   wireCrumbs(parts);
   document.querySelectorAll(".row").forEach(r =>
     r.addEventListener("click", () => renderBeeNominee(k, r.dataset.nm)));
+  document.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", ev => {
+    ev.stopPropagation(); askCategory(k, b.dataset.pick, b.closest(".row"));
+  }));
+  document.querySelectorAll("[data-clear]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    if(await clearWinner(k, b.dataset.clear)){ renderBeeWeek(k); toast(b.dataset.clear + " winner cleared"); }
+    else b.disabled = false;
+  }));
   if(list.length) $("xwk").addEventListener("click", () =>
     exportRows(beeSheet([k]), weekLabel(k), `BURLEBO Awards - Best Employee Ever - ${weekLabel(k)}`));
+}
+
+/* Inline prompt under the row: is this person the Office or Warehouse winner? */
+function askCategory(k, nominee, row){
+  document.querySelectorAll(".pickbox").forEach(x => x.remove());
+  const box = document.createElement("div");
+  box.className = "pickbox";
+  box.innerHTML = `<span>Make <b>${esc(nominee)}</b> this week's winner for:</span>
+    ${CATS.map(c => {
+      const cur = winnerOf(k, c);
+      return `<button class="btn sm" data-cat="${c}" title="${cur && cur !== nominee ? "Replaces " + esc(cur) : ""}">${c}</button>`;
+    }).join("")}
+    <button class="btn ghost sm" data-x>Cancel</button>`;
+  row.after(box);
+  box.querySelector("[data-x]").addEventListener("click", () => box.remove());
+  box.querySelectorAll("[data-cat]").forEach(b => b.addEventListener("click", async () => {
+    box.querySelectorAll("button").forEach(x => x.disabled = true);
+    if(await setWinner(k, b.dataset.cat, nominee)){
+      renderBeeWeek(k); toast(`${nominee} is the ${b.dataset.cat} winner`);
+    } else box.querySelectorAll("button").forEach(x => x.disabled = false);
+  }));
+}
+
+/* ---- yearly leaderboard: ranked by weekly wins ---- */
+function renderLeaderboard(year){
+  const parts = [{ t:"Awards", fn:renderAwards }, { t:BEE, fn:renderBeeWeeks }, { t:"Leaderboard" }];
+  const years = [...new Set(WINNERS.map(w => w.week_start.slice(0,4)))].sort().reverse();
+  const thisYear = String(new Date().getFullYear());
+  if(!years.includes(thisYear)) years.unshift(thisYear);
+  year = year || thisYear;
+  const by = {};
+  WINNERS.filter(w => w.week_start.slice(0,4) === year).forEach(w => {
+    const p = (by[w.nominee] ||= { name:w.nominee, wins:0, Office:0, Warehouse:0, weeks:[] });
+    p.wins++; p[w.category]++; p.weeks.push(w.week_start);
+  });
+  const list = Object.values(by).sort((a,b) => b.wins - a.wins || a.name.localeCompare(b.name));
+  const weeksPicked = new Set(WINNERS.filter(w => w.week_start.slice(0,4) === year).map(w => w.week_start)).size;
+  let place = 0, prev = null;
+  view.innerHTML = crumbs(parts) + `
+    <h2 class="sec">${year} Leaderboard</h2>
+    <p class="sub">Best Employee Ever weekly wins, Office and Warehouse combined. ${weeksPicked} week${weeksPicked===1?"":"s"} with a winner picked.</p>
+    ${years.length > 1 ? `<div class="yrsel">${years.map(y =>
+      `<button class="btn ghost sm ${y===year?"on":""}" data-yr="${y}">${y}</button>`).join("")}</div>` : ""}
+    ${list.length ? list.map((p, i) => {
+      if(p.wins !== prev){ place = i + 1; prev = p.wins; }
+      const split = CATS.filter(c => p[c]).map(c => `${c} ${p[c]}`).join(" · ");
+      return `<div class="row" style="cursor:default">
+        <span class="rk ${place===1?"top":""}">${place}</span>
+        <span class="nm">${esc(p.name)}<span class="lead">${esc(split)}</span></span>
+        <span class="ct"><b>${p.wins}</b> win${p.wins===1?"":"s"}</span>
+      </div>`;
+    }).join("") : `<div class="empty-state"><b>No winners yet</b>Pick a weekly winner and they will show up here.</div>`}`;
+  wireCrumbs(parts);
+  document.querySelectorAll("[data-yr]").forEach(b =>
+    b.addEventListener("click", () => renderLeaderboard(b.dataset.yr)));
 }
 
 /* ---- one person's votes for one week ---- */
@@ -894,7 +1018,9 @@ function renderBeeNominee(k, nominee){
   view.innerHTML = crumbs(parts) + `
     <h2 class="sec">${esc(nominee)}</h2>
     <p class="sub">${es.length} vote${es.length===1?"":"s"} for Best Employee Ever, ${esc(weekLabel(k).toLowerCase())}.
-      Their own gift card pick: <b style="color:var(--blaze)">${esc(ownPick(nominee, k) || "none yet (they have not voted)")}</b></p>
+      ${ownPick(nominee, k)
+        ? `Their own gift card pick: <b style="color:var(--blaze)">${esc(ownPick(nominee, k))}</b>`
+        : `<b style="color:#FF9E8C">${NO_VOTE}</b>`}</p>
     <div class="tools"><button class="btn ghost sm" id="copy">Copy all as text</button></div>
     ${es.map(entryCard).join("")}`;
   wireCrumbs(parts);
@@ -1045,9 +1171,10 @@ function beeSheet(keys){
   keys.forEach(k => rank(weeks[k] || []).forEach((r, i) => r.entries
     .sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
     .forEach(e => rows.push({
-      Week: weekLabel(k), Rank: i + 1, Nominee: r.nominee, Votes: r.voters.size,
+      Week: weekLabel(k), Rank: i + 1, Nominee: r.nominee,
+      Winner: winsIn(k, r.nominee).join(", "), Votes: r.voters.size,
       "Voted By": e.nominator, Date: fmtDate(e.created_at),
-      "Why": e.comment, "Nominee's Gift Card Pick": ownPick(r.nominee, k),
+      "Why": e.comment, "Nominee's Gift Card Pick": ownPick(r.nominee, k) || NO_VOTE,
       "Voter's Gift Card Pick": e.gift_card || ""
     }))));
   return rows;
