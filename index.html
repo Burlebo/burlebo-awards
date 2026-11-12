@@ -528,7 +528,13 @@ async function submitEntry(){
   const { error } = await db.from("awards_entries")
     .insert({ nominator, nominee, award: pickedAward, comment });
   btn.disabled = false; btn.textContent = "Submit nomination";
-  if(error){ err.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  if(error){
+    const dup = error.code === "23505" || /duplicate|unique/i.test(error.message);
+    err.innerHTML = `<div class="err">${dup
+      ? `${esc(nominator)} has already submitted a nomination for ${esc(pickedAward)}. You can nominate once per award, so pick a different award.`
+      : esc(error.message)}</div>`;
+    return;
+  }
   renderThanks(nominee, false);
 }
 
